@@ -61,6 +61,8 @@ void slix_poller_stop(SlixPoller* instance);
 
 void slix_poller_set_data(SlixPoller* instance, const SlixData* data);
 
+const SlixData* slix_poller_get_data(const SlixPoller* instance);
+
 #ifdef __cplusplus
 }
 #endif

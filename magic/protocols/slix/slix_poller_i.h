@@ -32,8 +32,6 @@ typedef enum {
 
 struct SlixPoller {
     Nfc* nfc;
-    NfcPoller* poller;
-    Iso15693_3Poller* iso15693_3_poller;
     SlixPollerState state;
 
     SlixData* slix_data;
@@ -54,6 +52,12 @@ SlixPollerError
     slix_poller_write_block(SlixPoller* instance, uint8_t block_num, const uint8_t* data);
 
 SlixPollerError slix_poller_get_nxp_system_info(SlixPoller* instance);
+
+SlixPollerError slix_poller_get_system_info(SlixPoller* instance);
+
+SlixPollerError slix_poller_select(SlixPoller* instance);
+
+SlixPollerError slix_poller_inventory(SlixPoller* instance);
 
 SlixPollerError slix_poller_read_signature(SlixPoller* instance);
 

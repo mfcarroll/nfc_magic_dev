@@ -32,7 +32,8 @@ SlixPollerError
     bit_buffer_reset(instance->tx_buffer);
 
     // Flags: Addressed, High data rate
-    uint8_t flags = ISO15693_3_REQ_FLAG_DATA_RATE_HI | ISO15693_3_REQ_FLAG_T4_ADDRESSED;
+    uint8_t flags = ISO15693_3_REQ_FLAG_SUBCARRIER_1 | ISO15693_3_REQ_FLAG_DATA_RATE_HI |
+                    ISO15693_3_REQ_FLAG_T4_ADDRESSED;
     bit_buffer_append_byte(instance->tx_buffer, flags);
     // Command
     bit_buffer_append_byte(instance->tx_buffer, ISO15693_3_CMD_WRITE_BLOCK);
@@ -72,7 +73,8 @@ SlixPollerError slix_poller_get_nxp_system_info(SlixPoller* instance) {
     bit_buffer_reset(instance->tx_buffer);
 
     // Flags: Addressed, High data rate
-    uint8_t flags = ISO15693_3_REQ_FLAG_DATA_RATE_HI | ISO15693_3_REQ_FLAG_T4_ADDRESSED;
+    uint8_t flags = ISO15693_3_REQ_FLAG_SUBCARRIER_1 | ISO15693_3_REQ_FLAG_DATA_RATE_HI |
+                    ISO15693_3_REQ_FLAG_T4_ADDRESSED;
     bit_buffer_append_byte(instance->tx_buffer, flags);
     // Command
     bit_buffer_append_byte(instance->tx_buffer, SLIX_CMD_GET_NXP_SYSTEM_INFORMATION);
@@ -125,12 +127,113 @@ SlixPollerError slix_poller_get_nxp_system_info(SlixPoller* instance) {
     return slix_error;
 }
 
+SlixPollerError slix_poller_get_system_info(SlixPoller* instance) {
+    furi_assert(instance);
+    bit_buffer_reset(instance->tx_buffer);
+
+    // Flags: High data rate. Unaddressed command.
+    uint8_t flags = ISO15693_3_REQ_FLAG_SUBCARRIER_1 | ISO15693_3_REQ_FLAG_DATA_RATE_HI;
+    bit_buffer_append_byte(instance->tx_buffer, flags);
+    // Command
+    bit_buffer_append_byte(instance->tx_buffer, ISO15693_3_CMD_GET_SYS_INFO);
+    // Append CRC
+    iso13239_crc_append(Iso13239CrcTypeDefault, instance->tx_buffer);
+
+    // Send request
+    NfcError error = nfc_poller_trx(
+        instance->nfc, instance->tx_buffer, instance->rx_buffer, SLIX_POLLER_MAX_FWT);
+
+    SlixPollerError slix_error = slix_poller_process_nfc_error(error);
+
+    if(slix_error == SlixPollerErrorNone) {
+        if(iso13239_crc_check(Iso13239CrcTypeDefault, instance->rx_buffer)) {
+            iso13239_crc_trim(instance->rx_buffer);
+
+            // Response format: flags(1) + info_flags(1) + uid(8) + optional_data(...)
+            const size_t min_resp_size = 1 + 1 + SLIX_UID_LEN;
+            if(bit_buffer_get_size_bytes(instance->rx_buffer) >= min_resp_size) {
+                const uint8_t* resp_data = bit_buffer_get_data(instance->rx_buffer);
+                if(resp_data[0] & ISO15693_3_RESP_FLAG_ERROR) {
+                    slix_error = SlixPollerErrorProtocol;
+                } else {
+                    // Parse response
+                    Iso15693_3SystemInfo* info = &instance->slix_data->iso15693_3_info;
+                    info->flags = resp_data[1];
+                    const uint8_t* extra_data = &resp_data[1 + 1 + SLIX_UID_LEN];
+
+                    if(info->flags & ISO15693_3_SYSINFO_FLAG_DSFID) {
+                        info->dsfid = *extra_data++;
+                    }
+                    if(info->flags & ISO15693_3_SYSINFO_FLAG_AFI) {
+                        info->afi = *extra_data++;
+                    }
+                    if(info->flags & ISO15693_3_SYSINFO_FLAG_MEMORY) {
+                        info->block_count = *extra_data++ + 1;
+                        info->block_size = (*extra_data++ & 0x1F) + 1;
+                    }
+                    if(info->flags & ISO15693_3_SYSINFO_FLAG_IC_REF) {
+                        info->ic_ref = *extra_data++;
+                    }
+                }
+            } else {
+                slix_error = SlixPollerErrorProtocol;
+            }
+        } else {
+            slix_error = SlixPollerErrorProtocol;
+        }
+    }
+
+    return slix_error;
+}
+
+SlixPollerError slix_poller_select(SlixPoller* instance) {
+    furi_assert(instance);
+    bit_buffer_reset(instance->tx_buffer);
+
+    // Flags: Addressed, High data rate
+    uint8_t flags = ISO15693_3_REQ_FLAG_SUBCARRIER_1 | ISO15693_3_REQ_FLAG_DATA_RATE_HI |
+                    ISO15693_3_REQ_FLAG_T4_ADDRESSED;
+    bit_buffer_append_byte(instance->tx_buffer, flags);
+    // Command
+    bit_buffer_append_byte(instance->tx_buffer, ISO15693_3_CMD_SELECT);
+    // UID
+    bit_buffer_append_bytes(instance->tx_buffer, instance->slix_data->uid, SLIX_UID_LEN);
+    // Append CRC
+    iso13239_crc_append(Iso13239CrcTypeDefault, instance->tx_buffer);
+
+    // Send request
+    NfcError error = nfc_poller_trx(
+        instance->nfc, instance->tx_buffer, instance->rx_buffer, SLIX_POLLER_MAX_FWT);
+
+    SlixPollerError slix_error = slix_poller_process_nfc_error(error);
+
+    if(slix_error == SlixPollerErrorNone) {
+        if(iso13239_crc_check(Iso13239CrcTypeDefault, instance->rx_buffer)) {
+            iso13239_crc_trim(instance->rx_buffer);
+            // Response should be 1 byte (flags)
+            if(bit_buffer_get_size_bytes(instance->rx_buffer) == 1) {
+                uint8_t resp_flags = bit_buffer_get_byte(instance->rx_buffer, 0);
+                if(resp_flags & ISO15693_3_RESP_FLAG_ERROR) {
+                    slix_error = SlixPollerErrorProtocol;
+                }
+            } else {
+                slix_error = SlixPollerErrorProtocol;
+            }
+        } else {
+            slix_error = SlixPollerErrorProtocol;
+        }
+    }
+
+    return slix_error;
+}
+
 SlixPollerError slix_poller_read_signature(SlixPoller* instance) {
     furi_assert(instance);
     bit_buffer_reset(instance->tx_buffer);
 
     // Flags: Addressed, High data rate
-    uint8_t flags = ISO15693_3_REQ_FLAG_DATA_RATE_HI | ISO15693_3_REQ_FLAG_T4_ADDRESSED;
+    uint8_t flags = ISO15693_3_REQ_FLAG_SUBCARRIER_1 | ISO15693_3_REQ_FLAG_DATA_RATE_HI |
+                    ISO15693_3_REQ_FLAG_T4_ADDRESSED;
     bit_buffer_append_byte(instance->tx_buffer, flags);
     // Command
     bit_buffer_append_byte(instance->tx_buffer, SLIX_CMD_READ_SIGNATURE);
@@ -169,4 +272,38 @@ SlixPollerError slix_poller_read_signature(SlixPoller* instance) {
     }
 
     return slix_error;
+}
+
+SlixPollerError slix_poller_inventory(SlixPoller* instance) {
+    furi_assert(instance);
+    bit_buffer_reset(instance->tx_buffer);
+    bit_buffer_reset(instance->rx_buffer);
+
+    // Build and send INVENTORY command
+    slix_build_inventory_request(instance->tx_buffer);
+
+    NfcError error = nfc_poller_trx(
+        instance->nfc, instance->tx_buffer, instance->rx_buffer, ISO15693_3_FDT_POLL_FC * 2);
+
+    SlixPollerError slix_error = slix_poller_process_nfc_error(error);
+    if(slix_error != SlixPollerErrorNone) {
+        return slix_error;
+    }
+
+    // A valid INVENTORY response is 12 bytes (flags, dsfid, uid, crc)
+    if(bit_buffer_get_size_bytes(instance->rx_buffer) >= 12) {
+        uint8_t flags = bit_buffer_get_byte(instance->rx_buffer, 0);
+        if(!(flags & ISO15693_3_RESP_FLAG_ERROR)) {
+            // Verify that the UID from inventory matches the one from the initial scan
+            const uint8_t* uid_lsb = &bit_buffer_get_data(instance->rx_buffer)[2];
+            if(memcmp(instance->slix_data->uid, uid_lsb, SLIX_UID_LEN) == 0) {
+                return SlixPollerErrorNone;
+            } else {
+                FURI_LOG_W(TAG, "Inventory UID mismatch");
+                return SlixPollerErrorProtocol;
+            }
+        }
+    }
+
+    return SlixPollerErrorProtocol;
 }

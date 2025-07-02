@@ -23,7 +23,7 @@ void nfc_magic_scene_slix_menu_on_enter(void* context) {
         submenu, "Wipe", SubmenuIndexWipe, nfc_magic_scene_slix_menu_submenu_callback, instance);
     submenu_add_item(
         submenu,
-        "More info (WIP)",
+        "More Info",
         SubmenuIndexMoreInfo,
         nfc_magic_scene_slix_menu_submenu_callback,
         instance);
@@ -48,8 +48,8 @@ bool nfc_magic_scene_slix_menu_on_event(void* context, SceneManagerEvent event) 
             scene_manager_next_scene(instance->scene_manager, NfcMagicSceneWipe);
             consumed = true;
         } else if(event.event == SubmenuIndexMoreInfo) {
-            // Placeholder: just go back to the previous scene
-            consumed = scene_manager_previous_scene(instance->scene_manager);
+            scene_manager_next_scene(instance->scene_manager, NfcMagicSceneSlixGetInfo);
+            consumed = true;
         }
         scene_manager_set_scene_state(instance->scene_manager, NfcMagicSceneSlixMenu, event.event);
     } else if(event.type == SceneManagerEventTypeBack) {
