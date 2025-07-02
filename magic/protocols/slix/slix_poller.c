@@ -1,16 +1,14 @@
-#include "slix_poller.h"
-#include "slix.h"
+#include "slix_poller_i.h"
 
 #include <furi/furi.h>
 #include <nfc/protocols/iso15693_3/iso15693_3.h>
-#include <nfc/protocols/iso15693_3/iso15693_3_poller.h>
 #include <nfc/nfc_poller.h>
 
-#define TAG "SlixPoller"
-
 #define SLIX_POLLER_THREAD_FLAG_DETECTED (1U << 0)
-#define SLIX_POLLER_MAX_BUFFER_SIZE      (32) // Inventory response is 12 bytes
 
+// Note: The detect function is kept as-is. It's a synchronous function
+// that doesn't use the SlixPoller state machine, which is consistent
+// with the Gen4 poller pattern.
 typedef struct {
     Nfc* nfc;
     BitBuffer* tx_buffer;
@@ -88,4 +86,125 @@ bool slix_poller_detect(Nfc* nfc, SlixData* slix_data) {
     bit_buffer_free(slix_poller_detect_ctx.rx_buffer);
 
     return slix_poller_detect_ctx.detected;
+}
+
+SlixPoller* slix_poller_alloc(Nfc* nfc) {
+    furi_assert(nfc);
+
+    SlixPoller* instance = malloc(sizeof(SlixPoller));
+    instance->poller = nfc_poller_alloc(nfc, NfcProtocolIso15693_3);
+
+    instance->slix_data = slix_alloc();
+
+    instance->tx_buffer = bit_buffer_alloc(SLIX_POLLER_MAX_BUFFER_SIZE);
+    instance->rx_buffer = bit_buffer_alloc(SLIX_POLLER_MAX_BUFFER_SIZE);
+
+    instance->slix_event.data = &instance->slix_event_data;
+
+    return instance;
+}
+
+void slix_poller_free(SlixPoller* instance) {
+    furi_assert(instance);
+
+    nfc_poller_free(instance->poller);
+    slix_free(instance->slix_data);
+    bit_buffer_free(instance->tx_buffer);
+    bit_buffer_free(instance->rx_buffer);
+
+    free(instance);
+}
+
+typedef NfcCommand (*SlixPollerStateHandler)(SlixPoller* instance);
+
+static NfcCommand slix_poller_idle_handler(SlixPoller* instance) {
+    NfcCommand command = NfcCommandContinue;
+
+    instance->current_block = 0;
+    instance->slix_event.type = SlixPollerEventTypeCardDetected;
+    command = instance->callback(instance->slix_event, instance->context);
+    instance->state = SlixPollerStateRequestMode;
+
+    return command;
+}
+
+static NfcCommand slix_poller_request_mode_handler(SlixPoller* instance) {
+    NfcCommand command = NfcCommandContinue;
+
+    instance->slix_event.type = SlixPollerEventTypeRequestMode;
+    command = instance->callback(instance->slix_event, instance->context);
+
+    if(instance->slix_event_data.request_mode.mode == SlixPollerModeWipe) {
+        instance->state = SlixPollerStateWipe;
+    } else {
+        // Other modes not implemented yet
+        instance->state = SlixPollerStateFail;
+    }
+
+    return command;
+}
+
+static NfcCommand slix_poller_wipe_handler(SlixPoller* instance) {
+    // Wipe logic will be implemented here in a future step.
+    // For now, we just transition to success to show the flow is working.
+    instance->state = SlixPollerStateSuccess;
+    return NfcCommandContinue;
+}
+
+static NfcCommand slix_poller_success_handler(SlixPoller* instance) {
+    instance->slix_event.type = SlixPollerEventTypeSuccess;
+    NfcCommand command = instance->callback(instance->slix_event, instance->context);
+    instance->state = SlixPollerStateIdle;
+    return command;
+}
+
+static NfcCommand slix_poller_fail_handler(SlixPoller* instance) {
+    instance->slix_event.type = SlixPollerEventTypeFail;
+    NfcCommand command = instance->callback(instance->slix_event, instance->context);
+    instance->state = SlixPollerStateIdle;
+    return command;
+}
+
+static const SlixPollerStateHandler slix_poller_state_handlers[SlixPollerStateNum] = {
+    [SlixPollerStateIdle] = slix_poller_idle_handler,
+    [SlixPollerStateRequestMode] = slix_poller_request_mode_handler,
+    [SlixPollerStateWipe] = slix_poller_wipe_handler,
+    [SlixPollerStateSuccess] = slix_poller_success_handler,
+    [SlixPollerStateFail] = slix_poller_fail_handler,
+};
+
+static NfcCommand slix_poller_callback(NfcGenericEvent event, void* context) {
+    furi_assert(context);
+    SlixPoller* instance = context;
+    NfcCommand command = NfcCommandContinue;
+
+    if(event.protocol == NfcProtocolIso15693_3) {
+        instance->iso15693_3_poller = event.instance;
+        const Iso15693_3PollerEvent* iso15693_3_event = event.event_data;
+
+        if(iso15693_3_event->type == Iso15693_3PollerEventTypeReady) {
+            if(instance->state < SlixPollerStateNum) {
+                command = slix_poller_state_handlers[instance->state](instance);
+            }
+        }
+    }
+
+    return command;
+}
+
+void slix_poller_start(SlixPoller* instance, SlixPollerCallback callback, void* context) {
+    furi_assert(instance);
+    furi_assert(callback);
+
+    instance->callback = callback;
+    instance->context = context;
+    instance->state = SlixPollerStateIdle;
+
+    nfc_poller_start(instance->poller, slix_poller_callback, instance);
+}
+
+void slix_poller_stop(SlixPoller* instance) {
+    furi_assert(instance);
+
+    nfc_poller_stop(instance->poller);
 }
