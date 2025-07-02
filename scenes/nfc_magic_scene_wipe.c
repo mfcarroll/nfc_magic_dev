@@ -148,6 +148,7 @@ void nfc_magic_scene_wipe_on_enter(void* context) {
             instance->gen4_poller, nfc_magic_scene_wipe_gen4_poller_callback, instance);
     } else if(instance->protocol == NfcMagicProtocolSlix) {
         instance->slix_poller = slix_poller_alloc(instance->nfc);
+        slix_poller_set_data(instance->slix_poller, instance->slix_data);
         slix_poller_start(
             instance->slix_poller, nfc_magic_scene_wipe_slix_poller_callback, instance);
     }

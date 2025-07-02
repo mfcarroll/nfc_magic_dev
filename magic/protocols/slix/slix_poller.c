@@ -1,6 +1,7 @@
 #include "slix_poller_i.h"
 
 #include <nfc/protocols/iso15693_3/iso15693_3.h>
+#include <nfc/protocols/iso15693_3/iso15693_3_poller.h>
 #include <nfc/nfc_poller.h>
 
 #define SLIX_POLLER_THREAD_FLAG_DETECTED (1U << 0)
@@ -92,6 +93,7 @@ SlixPoller* slix_poller_alloc(Nfc* nfc) {
     furi_assert(nfc);
 
     SlixPoller* instance = malloc(sizeof(SlixPoller));
+    instance->nfc = nfc;
     instance->poller = nfc_poller_alloc(nfc, NfcProtocolIso15693_3);
 
     instance->slix_data = slix_alloc();
@@ -136,10 +138,57 @@ static NfcCommand slix_poller_request_mode_handler(SlixPoller* instance) {
 
     if(instance->slix_event_data.request_mode.mode == SlixPollerModeWipe) {
         instance->state = SlixPollerStateWipe;
+    } else if(instance->slix_event_data.request_mode.mode == SlixPollerModeGetInfo) {
+        instance->state = SlixPollerStateGetInfo;
     } else {
         // Other modes not implemented yet
         instance->state = SlixPollerStateFail;
     }
+
+    return command;
+}
+
+static NfcCommand slix_poller_get_info_handler(SlixPoller* instance) {
+    NfcCommand command = NfcCommandContinue;
+    SlixPollerError error = SlixPollerErrorNone;
+
+    do {
+        // 1. Get standard ISO15693-3 system info
+        Iso15693_3Error iso_error = iso15693_3_poller_get_system_info(
+            instance->iso15693_3_poller, &instance->slix_data->iso15693_3_info);
+
+        if(iso_error != Iso15693_3ErrorNone) {
+            FURI_LOG_E(TAG, "Failed to get ISO15693-3 system info: %d", iso_error);
+            error = SlixPollerErrorProtocol;
+            break;
+        }
+
+        // 2. Get NXP-specific system info
+        error = slix_poller_get_nxp_system_info(instance);
+        if(error != SlixPollerErrorNone) {
+            FURI_LOG_E(TAG, "Failed to get NXP system info: %d", error);
+            break;
+        }
+
+        // 3. Determine card type
+        instance->slix_data->type = slix_get_type(instance->slix_data);
+
+        // 4. Read signature if supported (SLIX2)
+        if(instance->slix_data->type == SlixTypeSlix2) {
+            error = slix_poller_read_signature(instance);
+            if(error == SlixPollerErrorNone) {
+                instance->slix_data->signature_read = true;
+            } else {
+                // Signature read can fail on some clones, treat as non-fatal
+                FURI_LOG_W(TAG, "Failed to read signature: %d", error);
+                instance->slix_data->signature_read = false;
+                error = SlixPollerErrorNone; // Reset error to continue
+            }
+        }
+    } while(false);
+
+    instance->state = (error == SlixPollerErrorNone) ? SlixPollerStateSuccess :
+                                                       SlixPollerStateFail;
 
     return command;
 }
@@ -191,6 +240,7 @@ static const SlixPollerStateHandler slix_poller_state_handlers[SlixPollerStateNu
     [SlixPollerStateIdle] = slix_poller_idle_handler,
     [SlixPollerStateRequestMode] = slix_poller_request_mode_handler,
     [SlixPollerStateWipe] = slix_poller_wipe_handler,
+    [SlixPollerStateGetInfo] = slix_poller_get_info_handler,
     [SlixPollerStateSuccess] = slix_poller_success_handler,
     [SlixPollerStateFail] = slix_poller_fail_handler,
 };
@@ -229,4 +279,10 @@ void slix_poller_stop(SlixPoller* instance) {
     furi_assert(instance);
 
     nfc_poller_stop(instance->poller);
+}
+
+void slix_poller_set_data(SlixPoller* instance, const SlixData* data) {
+    furi_assert(instance);
+    furi_assert(data);
+    slix_copy(instance->slix_data, data);
 }

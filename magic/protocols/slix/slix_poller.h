@@ -18,6 +18,7 @@ typedef enum {
 
 typedef enum {
     SlixPollerModeWipe,
+    SlixPollerModeGetInfo,
     // Add other modes like Write here
 } SlixPollerMode;
 
@@ -57,6 +58,8 @@ void slix_poller_free(SlixPoller* instance);
 void slix_poller_start(SlixPoller* instance, SlixPollerCallback callback, void* context);
 
 void slix_poller_stop(SlixPoller* instance);
+
+void slix_poller_set_data(SlixPoller* instance, const SlixData* data);
 
 #ifdef __cplusplus
 }
