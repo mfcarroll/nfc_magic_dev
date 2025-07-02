@@ -9,30 +9,27 @@ extern "C" {
 #endif
 
 typedef enum {
-    SlixPollerErrorNone,
-    SlixPollerErrorTimeout,
-    SlixPollerErrorNotPresent,
-    SlixPollerErrorProtocol,
-} SlixPollerError;
-
-typedef enum {
     SlixPollerEventTypeCardDetected,
     SlixPollerEventTypeRequestMode,
+    // Add other events like RequestDataToWrite here
     SlixPollerEventTypeSuccess,
     SlixPollerEventTypeFail,
 } SlixPollerEventType;
 
 typedef enum {
     SlixPollerModeWipe,
-    // Other modes like Write can be added here
+    // Add other modes like Write here
 } SlixPollerMode;
 
 typedef struct {
     SlixPollerMode mode;
 } SlixPollerEventDataRequestMode;
 
+// Add other event data structs here
+
 typedef union {
     SlixPollerEventDataRequestMode request_mode;
+    // Add other event data unions here
 } SlixPollerEventData;
 
 typedef struct {
@@ -53,24 +50,11 @@ typedef struct SlixPoller SlixPoller;
  */
 bool slix_poller_detect(Nfc* nfc, SlixData* slix_data);
 
-/**
- * @brief Allocate a SlixPoller instance.
- * @param nfc Nfc instance.
- * @return SlixPoller* pointer to the allocated instance.
- */
 SlixPoller* slix_poller_alloc(Nfc* nfc);
 
-/**
- * @brief Free a SlixPoller instance.
- * @param instance Pointer to the SlixPoller instance to free.
- */
 void slix_poller_free(SlixPoller* instance);
 
-void slix_poller_start(
-    SlixPoller* instance,
-    const SlixData* slix_data,
-    SlixPollerCallback callback,
-    void* context);
+void slix_poller_start(SlixPoller* instance, SlixPollerCallback callback, void* context);
 
 void slix_poller_stop(SlixPoller* instance);
 
