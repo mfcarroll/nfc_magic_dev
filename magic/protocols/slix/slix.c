@@ -15,6 +15,26 @@ void slix_build_inventory_request(BitBuffer* buf) {
     iso13239_crc_append(Iso13239CrcTypeDefault, buf);
 }
 
+void slix_build_write_block_request(
+    BitBuffer* buf,
+    const uint8_t* uid,
+    uint8_t block_num,
+    const uint8_t* data) {
+    bit_buffer_reset(buf);
+    // Addressed, High data rate
+    uint8_t flags = ISO15693_3_REQ_FLAG_T4_ADDRESSED | ISO15693_3_REQ_FLAG_DATA_RATE_HI;
+    bit_buffer_append_byte(buf, flags);
+    bit_buffer_append_byte(buf, ISO15693_3_CMD_WRITE_BLOCK);
+    bit_buffer_append_bytes(buf, uid, SLIX_UID_LEN);
+    bit_buffer_append_byte(buf, block_num);
+
+    // Note: ISO15693 block size can vary. SLIX-S and SLIX2 are 4 bytes.
+    // Assuming 4-byte blocks for this implementation.
+    bit_buffer_append_bytes(buf, data, 4);
+
+    iso13239_crc_append(Iso13239CrcTypeDefault, buf);
+}
+
 SlixData* slix_alloc() {
     SlixData* data = malloc(sizeof(SlixData));
     return data;
