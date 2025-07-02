@@ -118,6 +118,7 @@ struct NfcMagicApp {
     bool gen2_poller_is_wipe_mode;
 
     Gen4Poller* gen4_poller;
+    SlixPoller* slix_poller;
 
     Gen4* gen4_data;
 

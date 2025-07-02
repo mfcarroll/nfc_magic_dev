@@ -4,6 +4,7 @@
 #include <nfc/nfc_poller.h>
 
 #define SLIX_POLLER_THREAD_FLAG_DETECTED (1U << 0)
+#define SLIX_WIPE_BLOCKS_TOTAL           (32)
 
 // Note: The detect function is kept as-is. It's a synchronous function
 // that doesn't use the SlixPoller state machine, which is consistent
@@ -16,19 +17,6 @@ typedef struct {
     bool detected;
     SlixData* slix_data;
 } SlixPollerDetectContext;
-
-static SlixPollerError slix_poller_process_error(NfcError error) {
-    SlixPollerError ret = SlixPollerErrorNone;
-
-    if(error == NfcErrorNone) {
-        ret = SlixPollerErrorNone;
-    } else if(error == NfcErrorTimeout) {
-        ret = SlixPollerErrorTimeout;
-    } else {
-        ret = SlixPollerErrorProtocol;
-    }
-    return ret;
-}
 
 static NfcCommand slix_poller_detect_callback(NfcEvent event, void* context) {
     furi_assert(context);
@@ -157,10 +145,32 @@ static NfcCommand slix_poller_request_mode_handler(SlixPoller* instance) {
 }
 
 static NfcCommand slix_poller_wipe_handler(SlixPoller* instance) {
-    // Wipe logic will be implemented here in a future step.
-    // For now, we just transition to success to show the flow is working.
-    instance->state = SlixPollerStateSuccess;
-    return NfcCommandContinue;
+    NfcCommand command = NfcCommandContinue;
+
+    if(instance->current_block >= SLIX_WIPE_BLOCKS_TOTAL) {
+        instance->state = SlixPollerStateSuccess;
+    } else {
+        do {
+            const uint8_t zero_block[SLIX_BLOCK_SIZE] = {0};
+            SlixPollerError error =
+                slix_poller_write_block(instance, instance->current_block, zero_block);
+
+            if(error != SlixPollerErrorNone) {
+                // Some SLIX cards have fewer than 32 blocks.
+                // Writing to a non-existent block will cause a protocol error.
+                // We can treat this as success and finish wiping.
+                FURI_LOG_W(
+                    TAG,
+                    "Wipe failed on block %d, assuming end of memory",
+                    instance->current_block);
+                instance->state = SlixPollerStateSuccess;
+                break;
+            }
+            instance->current_block++;
+        } while(false);
+    }
+
+    return command;
 }
 
 static NfcCommand slix_poller_success_handler(SlixPoller* instance) {

@@ -80,6 +80,29 @@ NfcCommand nfc_magic_scene_wipe_gen4_poller_callback(Gen4PollerEvent event, void
     return command;
 }
 
+NfcCommand nfc_magic_scene_wipe_slix_poller_callback(SlixPollerEvent event, void* context) {
+    NfcMagicApp* instance = context;
+
+    NfcCommand command = NfcCommandContinue;
+
+    if(event.type == SlixPollerEventTypeCardDetected) {
+        view_dispatcher_send_custom_event(
+            instance->view_dispatcher, NfcMagicCustomEventCardDetected);
+    } else if(event.type == SlixPollerEventTypeRequestMode) {
+        event.data->request_mode.mode = SlixPollerModeWipe;
+    } else if(event.type == SlixPollerEventTypeSuccess) {
+        view_dispatcher_send_custom_event(
+            instance->view_dispatcher, NfcMagicCustomEventWorkerSuccess);
+        command = NfcCommandStop;
+    } else if(event.type == SlixPollerEventTypeFail) {
+        view_dispatcher_send_custom_event(
+            instance->view_dispatcher, NfcMagicCustomEventWorkerFail);
+        command = NfcCommandStop;
+    }
+
+    return command;
+}
+
 static void nfc_magic_scene_wipe_setup_view(NfcMagicApp* instance) {
     Popup* popup = instance->popup;
     popup_reset(popup);
@@ -123,6 +146,10 @@ void nfc_magic_scene_wipe_on_enter(void* context) {
         gen4_poller_set_password(instance->gen4_poller, instance->gen4_password);
         gen4_poller_start(
             instance->gen4_poller, nfc_magic_scene_wipe_gen4_poller_callback, instance);
+    } else if(instance->protocol == NfcMagicProtocolSlix) {
+        instance->slix_poller = slix_poller_alloc(instance->nfc);
+        slix_poller_start(
+            instance->slix_poller, nfc_magic_scene_wipe_slix_poller_callback, instance);
     }
 }
 
@@ -168,6 +195,9 @@ void nfc_magic_scene_wipe_on_exit(void* context) {
     } else if(instance->protocol == NfcMagicProtocolGen4) {
         gen4_poller_stop(instance->gen4_poller);
         gen4_poller_free(instance->gen4_poller);
+    } else if(instance->protocol == NfcMagicProtocolSlix) {
+        slix_poller_stop(instance->slix_poller);
+        slix_poller_free(instance->slix_poller);
     }
     scene_manager_set_scene_state(
         instance->scene_manager, NfcMagicSceneWipe, NfcMagicSceneWipeStateCardSearch);
