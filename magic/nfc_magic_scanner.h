@@ -1,6 +1,7 @@
 #pragma once
 
 #include "protocols/gen4/gen4.h"
+#include "protocols/slix/slix.h"
 #include <nfc/nfc.h>
 #include "protocols/nfc_magic_protocols.h"
 
@@ -41,6 +42,8 @@ void nfc_magic_scanner_start(
 void nfc_magic_scanner_stop(NfcMagicScanner* instance);
 
 const Gen4* nfc_magic_scanner_get_gen4_data(NfcMagicScanner* instance);
+
+const SlixData* nfc_magic_scanner_get_slix_data(NfcMagicScanner* instance);
 
 #ifdef __cplusplus
 }

@@ -1,5 +1,6 @@
 #include "../nfc_magic_app_i.h"
 #include "magic/nfc_magic_scanner.h"
+#include "magic/protocols/slix/slix.h"
 
 void nfc_magic_scene_magic_info_widget_callback(
     GuiButtonType result,
@@ -52,6 +53,15 @@ void nfc_magic_scene_magic_info_on_enter(void* context) {
 
         widget_add_string_multiline_element(
             widget, 0, 30, AlignLeft, AlignTop, FontSecondary, furi_string_get_cstr(message));
+    } else if(instance->protocol == NfcMagicProtocolSlix) {
+        slix_copy(instance->slix_data, nfc_magic_scanner_get_slix_data(instance->scanner));
+        const SlixData* slix_data = instance->slix_data;
+        furi_string_set(message, "UID: ");
+        for(int8_t i = sizeof(slix_data->uid) - 1; i >= 0; i--) {
+            furi_string_cat_printf(message, "%02X", slix_data->uid[i]);
+        }
+        widget_add_string_element(
+            widget, 0, 30, AlignLeft, AlignTop, FontSecondary, furi_string_get_cstr(message));
     }
 
     widget_add_button_element(
@@ -83,6 +93,9 @@ bool nfc_magic_scene_magic_info_on_event(void* context, SceneManagerEvent event)
                 consumed = true;
             } else if(instance->protocol == NfcMagicProtocolClassic) {
                 scene_manager_next_scene(instance->scene_manager, NfcMagicSceneMfClassicMenu);
+                consumed = true;
+            } else if(instance->protocol == NfcMagicProtocolSlix) {
+                scene_manager_next_scene(instance->scene_manager, NfcMagicSceneSlixMenu);
                 consumed = true;
             }
         }

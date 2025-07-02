@@ -2,9 +2,11 @@
 
 #include "core/check.h"
 #include "protocols/gen4/gen4.h"
+#include "protocols/slix/slix.h"
 #include "protocols/gen1a/gen1a_poller.h"
 #include "protocols/gen2/gen2_poller.h"
 #include "protocols/gen4/gen4_poller.h"
+#include "protocols/slix/slix_poller.h"
 #include <nfc/nfc_poller.h>
 
 #include <furi/furi.h>
@@ -22,6 +24,7 @@ struct NfcMagicScanner {
 
     Gen4Password gen4_password;
     Gen4* gen4_data;
+    SlixData* slix_data;
     bool magic_protocol_detected;
 
     NfcMagicScannerCallback callback;
@@ -47,6 +50,7 @@ NfcMagicScanner* nfc_magic_scanner_alloc(Nfc* nfc) {
     NfcMagicScanner* instance = malloc(sizeof(NfcMagicScanner));
     instance->nfc = nfc;
     instance->gen4_data = gen4_alloc();
+    instance->slix_data = slix_alloc();
 
     return instance;
 }
@@ -55,6 +59,7 @@ void nfc_magic_scanner_free(NfcMagicScanner* instance) {
     furi_assert(instance);
 
     gen4_free(instance->gen4_data);
+    slix_free(instance->slix_data);
     free(instance);
 }
 
@@ -90,6 +95,13 @@ static int32_t nfc_magic_scanner_worker(void* context) {
             } else if(instance->current_protocol == NfcMagicProtocolGen2) {
                 Gen2PollerError error = gen2_poller_detect(instance->nfc);
                 instance->magic_protocol_detected = (error == Gen2PollerErrorNone);
+                if(instance->magic_protocol_detected) {
+                    break;
+                }
+            } else if(instance->current_protocol == NfcMagicProtocolSlix) {
+                slix_reset(instance->slix_data);
+                instance->magic_protocol_detected =
+                    slix_poller_detect(instance->nfc, instance->slix_data);
                 if(instance->magic_protocol_detected) {
                     break;
                 }
@@ -176,4 +188,10 @@ const Gen4* nfc_magic_scanner_get_gen4_data(NfcMagicScanner* instance) {
     furi_assert(instance);
 
     return instance->gen4_data;
+}
+
+const SlixData* nfc_magic_scanner_get_slix_data(NfcMagicScanner* instance) {
+    furi_assert(instance);
+
+    return instance->slix_data;
 }

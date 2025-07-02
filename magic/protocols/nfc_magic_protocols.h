@@ -8,6 +8,7 @@ typedef enum {
     NfcMagicProtocolGen1,
     NfcMagicProtocolGen2,
     NfcMagicProtocolGen4,
+    NfcMagicProtocolSlix,
     NfcMagicProtocolClassic, // Last to give priority to the others
 
     NfcMagicProtocolNum,

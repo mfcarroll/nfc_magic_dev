@@ -7,6 +7,7 @@ static const char* nfc_magic_protocol_names[NfcMagicProtocolNum] = {
     [NfcMagicProtocolGen2] = "Gen2",
     [NfcMagicProtocolClassic] = "MIFARE Classic",
     [NfcMagicProtocolGen4] = "Gen4 GTU",
+    [NfcMagicProtocolSlix] = "SLIX",
 };
 
 const char* nfc_magic_protocols_get_name(NfcMagicProtocol protocol) {

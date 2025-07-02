@@ -1,7 +1,7 @@
 #include "write_problems.h"
 
 #include <gui/elements.h>
-#include "nfc_magic_icons.h"
+#include "nfc_magic_dev_icons.h"
 
 struct WriteProblems {
     View* view;
